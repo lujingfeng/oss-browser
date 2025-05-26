@@ -9,22 +9,23 @@ angular.module('web').factory('ossUploadManager', [
   'DelayDone',
   'safeApply',
   'settingsSvs',
-  function(
-      $q,
-      $state,
-      $timeout,
-      ossSvs2,
-      AuthInfo,
-      Toast,
-      Const,
-      DelayDone,
-      safeApply,
-      settingsSvs
+  function (
+    $q,
+    $state,
+    $timeout,
+    ossSvs2,
+    AuthInfo,
+    Toast,
+    Const,
+    DelayDone,
+    safeApply,
+    settingsSvs,
   ) {
     var OssStore = require('./node/ossstore');
     var fs = require('fs');
     var path = require('path');
     var os = require('os');
+    var crypto = require('crypto');
 
     var stopCreatingFlag = false;
 
@@ -38,9 +39,9 @@ angular.module('web').factory('ossUploadManager', [
       checkStart: checkStart,
       saveProg: saveProg,
 
-      stopCreatingJobs: function() {
+      stopCreatingJobs: function () {
         stopCreatingFlag = true;
-      }
+      },
     };
 
     function init(scope) {
@@ -52,7 +53,7 @@ angular.module('web').factory('ossUploadManager', [
       var arr = loadProg();
       var authInfo = AuthInfo.get();
 
-      angular.forEach(arr, function(n) {
+      angular.forEach(arr, function (n) {
         // console.log(n,'<=====');
         var job = createJob(authInfo, n);
 
@@ -61,7 +62,9 @@ angular.module('web').factory('ossUploadManager', [
           job.status == 'running' ||
           job.status == 'verifying' ||
           job.status == 'retrying'
-        ) { job.stop(); }
+        ) {
+          job.stop();
+        }
 
         addEvents(job);
       });
@@ -76,13 +79,13 @@ angular.module('web').factory('ossUploadManager', [
       // save
       saveProg();
 
-      job.on('partcomplete', function(prog) {
+      job.on('partcomplete', function (prog) {
         safeApply($scope);
         // save
         saveProg();
       });
 
-      job.on('statuschange', function(status, retryTimes) {
+      job.on('statuschange', function (status, retryTimes) {
         if (status == 'stopped') {
           concurrency--;
           $timeout(checkStart, 100);
@@ -96,17 +99,17 @@ angular.module('web').factory('ossUploadManager', [
         // save
         saveProg();
       });
-      job.on('speedChange', function() {
+      job.on('speedChange', function () {
         safeApply($scope);
       });
 
-      job.on('complete', function() {
+      job.on('complete', function () {
         concurrency--;
         checkStart();
         checkNeedRefreshFileList(job.to.bucket, job.to.key);
         // $scope.$emit('needrefreshfilelists');
       });
-      job.on('error', function(err) {
+      job.on('error', function (err) {
         console.error(err);
         concurrency--;
         checkStart();
@@ -124,7 +127,9 @@ angular.module('web').factory('ossUploadManager', [
         var arr = $scope.lists.uploadJobList;
 
         for (var i = 0; i < arr.length; i++) {
-          if (concurrency >= maxConcurrency) { return; }
+          if (concurrency >= maxConcurrency) {
+            return;
+          }
 
           var n = arr[i];
 
@@ -161,8 +166,10 @@ angular.module('web').factory('ossUploadManager', [
 
       var authInfo = AuthInfo.get();
 
-      digArr(filePaths, function() {
-        if (jobsAddingFn) { jobsAddingFn(); }
+      digArr(filePaths, function () {
+        if (jobsAddingFn) {
+          jobsAddingFn();
+        }
       });
 
       function digArr(filePaths, fn) {
@@ -174,9 +181,11 @@ angular.module('web').factory('ossUploadManager', [
           var n = filePaths[c];
           var dirPath = path.dirname(n);
 
-          if (stopCreatingFlag) { return; }
+          if (stopCreatingFlag) {
+            return;
+          }
 
-          dig(filePaths[c], dirPath, function(jobs) {
+          dig(filePaths[c], dirPath, function (jobs) {
             t = t.concat(jobs);
             c++;
 
@@ -196,16 +205,22 @@ angular.module('web').factory('ossUploadManager', [
         var len = arr.length;
         var c = 0;
 
-        if (len == 0) { callFn([]); } else { inDig(); }
+        if (len == 0) {
+          callFn([]);
+        } else {
+          inDig();
+        }
 
         // 串行
         function inDig() {
-          dig(path.join(parentPath, arr[c]), dirPath, function(jobs) {
+          dig(path.join(parentPath, arr[c]), dirPath, function (jobs) {
             t = t.concat(jobs);
             c++;
 
             // console.log(c,'/',len);
-            if (c >= len) { callFn(t); } else {
+            if (c >= len) {
+              callFn(t);
+            } else {
               if (stopCreatingFlag) {
                 return;
               }
@@ -238,11 +253,11 @@ angular.module('web').factory('ossUploadManager', [
         if (fs.statSync(absPath).isDirectory()) {
           // 创建目录
           ossSvs2
-              .createFolder(bucketInfo.region, bucketInfo.bucket, filePath + '/')
-              .then(function() {
+            .createFolder(bucketInfo.region, bucketInfo.bucket, filePath + '/')
+            .then(function () {
               // 判断是否刷新文件列表
-                checkNeedRefreshFileList(bucketInfo.bucket, filePath + '/');
-              });
+              checkNeedRefreshFileList(bucketInfo.bucket, filePath + '/');
+            });
 
           // 递归遍历目录
           // var t = [];
@@ -252,34 +267,46 @@ angular.module('web').factory('ossUploadManager', [
           //   t = t.concat(ret);
           // });
 
-          fs.readdir(absPath, function(err, arr) {
+          fs.readdir(absPath, function (err, arr) {
             if (err) {
               console.log(err.stack);
             } else {
-              loop(absPath, dirPath, arr, function(jobs) {
-                $timeout(function() {
+              loop(absPath, dirPath, arr, function (jobs) {
+                $timeout(function () {
                   callFn(jobs);
                 }, 1);
               });
             }
           });
         } else {
+          const buffer = fs.readFileSync(absPath);
+          const hash = crypto.createHash('sha256').update(buffer).digest('hex').slice(0, 8);
+
+          // 拆分路径
+          const dir = path.dirname(filePath);
+          const ext = path.extname(filePath);
+          const baseName = path.basename(filePath, ext);
+
+          // 构造新文件路径
+          const hashedFileName = `${baseName}_${hash}${ext}`;
+          const newFilePath = path.join(dir, hashedFileName);
+
           // 文件
           var job = createJob(authInfo, {
             region: bucketInfo.region,
             from: {
               name: fileName,
-              path: absPath
+              path: absPath,
             },
             to: {
               bucket: bucketInfo.bucket,
-              key: filePath
-            }
+              key: newFilePath,
+            },
           });
 
           addEvents(job);
 
-          $timeout(function() {
+          $timeout(function () {
             callFn([job]);
           }, 1);
         }
@@ -307,28 +334,20 @@ angular.module('web').factory('ossUploadManager', [
             Credentials: {
               AccessKeyId: auth.id,
               AccessKeySecret: auth.secret,
-              SecurityToken: auth.stoken
-            }
+              SecurityToken: auth.stoken,
+            },
           },
-          endpoint: ossSvs2.getOssEndpoint(
-              opt.region,
-              opt.to.bucket,
-              endpointname
-          ),
-          cname: cname
+          endpoint: ossSvs2.getOssEndpoint(opt.region, opt.to.bucket, endpointname),
+          cname: cname,
         });
       } else {
         var store = new OssStore({
           aliyunCredential: {
             accessKeyId: auth.id,
-            secretAccessKey: auth.secret
+            secretAccessKey: auth.secret,
           },
-          endpoint: ossSvs2.getOssEndpoint(
-              opt.region,
-              opt.to.bucket,
-              endpointname
-          ),
-          cname: cname
+          endpoint: ossSvs2.getOssEndpoint(opt.region, opt.to.bucket, endpointname),
+          cname: cname,
         });
       }
 
@@ -345,39 +364,41 @@ angular.module('web').factory('ossUploadManager', [
      */
     function saveProg() {
       DelayDone.delayRun(
-          'save_upload_prog',
-          1000,
-          function() {
-            var t = [];
+        'save_upload_prog',
+        1000,
+        function () {
+          var t = [];
 
-            angular.forEach($scope.lists.uploadJobList, function(n) {
-              if (n.status == 'finished') { return; }
+          angular.forEach($scope.lists.uploadJobList, function (n) {
+            if (n.status == 'finished') {
+              return;
+            }
 
-              if (n.checkPoints && n.checkPoints.chunks) {
-                var checkPoints = angular.copy(n.checkPoints);
+            if (n.checkPoints && n.checkPoints.chunks) {
+              var checkPoints = angular.copy(n.checkPoints);
 
-                delete checkPoints.chunks;
-              }
+              delete checkPoints.chunks;
+            }
 
-              t.push({
-                crc64Str: n.crc64Str,
-                checkPoints: checkPoints,
-                region: n.region,
-                to: n.to,
-                from: n.from,
-                status: n.status,
-                message: n.message,
-                ecCode: n.ecCode,
-                requestId: n.requestId,
-                prog: n.prog
-              });
+            t.push({
+              crc64Str: n.crc64Str,
+              checkPoints: checkPoints,
+              region: n.region,
+              to: n.to,
+              from: n.from,
+              status: n.status,
+              message: n.message,
+              ecCode: n.ecCode,
+              requestId: n.requestId,
+              prog: n.prog,
             });
+          });
 
-            // console.log('request save upload:', t);
-            fs.writeFileSync(getUpProgFilePath(), JSON.stringify(t));
-            $scope.calcTotalProg();
-          },
-          20
+          // console.log('request save upload:', t);
+          fs.writeFileSync(getUpProgFilePath(), JSON.stringify(t));
+          $scope.calcTotalProg();
+        },
+        20,
       );
     }
 
@@ -406,5 +427,5 @@ angular.module('web').factory('ossUploadManager', [
 
       return path.join(folder, 'upprog_' + username + '.json');
     }
-  }
+  },
 ]);
